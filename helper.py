@@ -44,86 +44,143 @@ CHUNK_TYPE_COLORS = {
     "table": (70, 130, 180),           # Steel blue
 }
 
+from pathlib import Path
+
 def draw_bounding_boxes_2(groundings, document_path, base_path="."):
     """
     Draw bounding boxes on document images to visualize parsed chunks.
-
-    Args:
-        groundings: Dictionary of grounding objects with chunk locations
-        document_path: Path to the original document
-        base_path: Directory to save annotated images
     """
+
+    base_path = Path(base_path)
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    document_path = Path(document_path)
+
     def create_annotated_image(image, groundings, page_num=0):
-        """Create an annotated image with grounding boxes and labels."""
         annotated_img = image.copy()
         draw = ImageDraw.Draw(annotated_img)
 
         img_width, img_height = image.size
 
         groundings_found = 0
+
         for gid, grounding in groundings.items():
-            # Check if grounding belongs to this page (for multi-page PDFs)
+
             if grounding.page != page_num:
                 continue
 
             groundings_found += 1
+
             box = grounding.box
 
-            # Extract normalized coordinates from box
-            left, top, right, bottom = box.left, box.top, box.right, box.bottom
+            left, top, right, bottom = (
+                box.left,
+                box.top,
+                box.right,
+                box.bottom
+            )
 
-            # Convert normalized coordinates to pixel coordinates
             x1 = int(left * img_width)
             y1 = int(top * img_height)
             x2 = int(right * img_width)
             y2 = int(bottom * img_height)
 
-            # Draw bounding box with color based on chunk type
-            color = CHUNK_TYPE_COLORS.get(grounding.type, (128, 128, 128))
-            draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+            color = CHUNK_TYPE_COLORS.get(
+                grounding.type,
+                (128, 128, 128)
+            )
 
-            # Draw label background and text
+            draw.rectangle(
+                [x1, y1, x2, y2],
+                outline=color,
+                width=3
+            )
+
             label = f"{grounding.type}:{gid}"
+
             label_y = max(0, y1 - 20)
-            draw.rectangle([x1, label_y, x1 + len(label) * 8, y1], fill=color)
-            draw.text((x1 + 2, label_y + 2), label, fill=(255, 255, 255))
+
+            draw.rectangle(
+                [x1, label_y, x1 + len(label) * 8, y1],
+                fill=color
+            )
+
+            draw.text(
+                (x1 + 2, label_y + 2),
+                label,
+                fill=(255, 255, 255)
+            )
 
         if groundings_found == 0:
             return None
+
         return annotated_img
 
-    # Handle PDF documents
-    if document_path.suffix.lower() == '.pdf':
+    # PDF handling
+    if document_path.suffix.lower() == ".pdf":
+
         pdf = pymupdf.open(document_path)
+
         total_pages = len(pdf)
 
         for page_num in range(total_pages):
-            page = pdf[page_num]
-            pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))  # 2x scaling
-            img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-            # Create and save annotated image for this page
-            annotated_img = create_annotated_image(img, groundings, page_num)
+            page = pdf[page_num]
+
+            pix = page.get_pixmap(
+                matrix=pymupdf.Matrix(2, 2)
+            )
+
+            img = PILImage.frombytes(
+                "RGB",
+                [pix.width, pix.height],
+                pix.samples
+            )
+
+            annotated_img = create_annotated_image(
+                img,
+                groundings,
+                page_num
+            )
+
             if annotated_img is not None:
-                annotated_path = f"{base_path}/page_{page_num + 1}_annotated.png"
+
+                annotated_path = (
+                    base_path /
+                    f"{document_path.stem}_page_{page_num + 1}_annotated.png"
+                )
+
                 annotated_img.save(annotated_path)
+
                 print(f"Annotated image saved to: {annotated_path}")
 
         pdf.close()
+
     else:
-        # Handle image files directly
+        # Image handling
+
         img = PILImage.open(document_path)
+
         if img.mode != "RGB":
             img = img.convert("RGB")
 
-        # Create and save annotated image
-        annotated_img = create_annotated_image(img, groundings)
-        annotated_path = "page_annotated.png"
-        annotated_img.save(annotated_path)
-        print(f"Annotated image saved to: {annotated_path}")
+        annotated_img = create_annotated_image(
+            img,
+            groundings
+        )
+
+        if annotated_img is not None:
+
+            annotated_path = (
+                base_path /
+                f"{document_path.stem}_annotated.png"
+            )
+
+            annotated_img.save(annotated_path)
+
+            print(f"Annotated image saved to: {annotated_path}")
 
     return img
-
 
 def draw_bounding_boxes(parse_response, document_path):
     """
